@@ -138,7 +138,7 @@ CoveragePlot <- function(
   depth[, label := factor(label, levels = unique(label[order(match(group, lv))]))]
 
   #- group colors & isoform structures (exons split in CDS / UTR)...
-  if (is.null(colors)) colors <- stats::setNames(grDevices::hcl.colors(max(3, length(lv)), "Dark 3")[seq_along(lv)], lv)
+  if (is.null(colors)) colors <- stats::setNames(.group_colors(length(lv)), lv)
   parts <- .isoform_parts(gtab)
   #- isoforms with a part in the plotted region only...
   parts <- parts[end >= from & start <= to]
@@ -201,13 +201,16 @@ CoveragePlot <- function(
                        fill = "#8FA8C8", color = "#3C5488", linewidth = .2) +
     ggplot2::geom_rect(data = parts[feature == "CDS"], ggplot2::aes(xmin = pmax(start, from), xmax = pmin(end, to), ymin = y - .32, ymax = y + .32),
                        fill = "#3C5488", color = "#3C5488", linewidth = .2) +
-    ggplot2::scale_y_continuous(breaks = seq_along(levels(parts$transcript_name)), labels = levels(parts$transcript_name),
-                                expand = ggplot2::expansion(add = .6)) +
+    ggplot2::scale_y_continuous(breaks = seq_along(levels(parts$transcript_name)), labels = levels(parts$transcript_name)) +
     ggplot2::scale_x_continuous(labels = kb, n.breaks = 6) +
-    ggplot2::coord_cartesian(xlim = c(from, to), expand = FALSE) +
+    #- margin below the last isoform (axis not overlapping the exons)
+    ggplot2::coord_cartesian(xlim = c(from, to), ylim = c(0, nlevels(parts$transcript_name) + .6), expand = FALSE) +
     ggplot2::labs(x = chr, y = NULL) +
     ggplot2::theme_classic(base_size = 12) +
     ggplot2::theme(axis.line.y = ggplot2::element_blank(), axis.ticks.y = ggplot2::element_blank(),
                    axis.text.y = ggplot2::element_text(face = "italic", color = "black"))
-  return(patchwork::wrap_plots(p_cov, p_gene, ncol = 1, heights = c(length(lv) * 1.1, max(.8, nlevels(parts$transcript_name) * .35))))
+  return(patchwork::wrap_plots(p_cov, p_gene, ncol = 1, heights = c(length(lv) * 1.1, max(1, (nlevels(parts$transcript_name) + .6) * .35))))
 }
+
+#- colors of the groups of cells (CoveragePlot & plotUsage)
+.group_colors <- function(n) grDevices::hcl.colors(max(3, n), "Dark 3")[seq_len(n)]
