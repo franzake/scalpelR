@@ -24,6 +24,7 @@
 #'   otherwise centered on the gene mean.
 #' @param n_clusters Optional number of clusters of genes (hierarchical clustering of the values): genes split in
 #'   blocks (e.g. early / late shortening, lengthening), cluster of each gene in \code{attr(p, "shift")}.
+#' @param border Color of the tile borders (\code{NA}: none). Default \code{"black"}.
 #' @param show_genes Show the gene names (default: if 60 genes or less).
 #' @param assay Seurat assay. Default \code{"RNA"}.
 #'
@@ -56,6 +57,7 @@ plotShiftHeatmap <- function(
     min_umis = 20,
     scale = TRUE,
     n_clusters = NULL,
+    border = "black",
     show_genes = NULL,
     assay = "RNA") {
   meta <- seurat_obj[[]]
@@ -158,17 +160,28 @@ plotShiftHeatmap <- function(
   if (is.null(order_by)) {
     tab[, c("group", "sample") := data.table::tstrsplit(as.character(column), "\r", fixed = TRUE)]
     tab[, group := factor(group, levels = if (is.null(groups)) sort(unique(group)) else groups)]
-    p <- ggplot2::ggplot(tab, ggplot2::aes(sample, gene_name, fill = value)) +
-      ggplot2::geom_tile() + fill + th +
-      ggplot2::facet_grid(if (row_facet) cluster ~ group else . ~ group, scales = "free", space = "free", labeller = ggplot2::label_wrap_gen(15)) +
-      ggplot2::labs(x = NULL, y = NULL, title = ttl) +
-      ggplot2::theme(axis.text.x = if (is.null(sample_by)) ggplot2::element_blank() else ggplot2::element_text(angle = 45, hjust = 1),
-                     strip.text = ggplot2::element_text(face = "bold"), strip.text.y = ggplot2::element_text(angle = 0),
-                     panel.spacing = ggplot2::unit(.3, "lines"))
+    if (is.null(sample_by)) {
+      #- cells of all the samples pooled: one column per group...
+      p <- ggplot2::ggplot(tab, ggplot2::aes(group, gene_name, fill = value)) +
+        ggplot2::geom_tile(color = border, linewidth = .1) + fill + th +
+        ggplot2::scale_x_discrete(labels = function(x) gsub(" ", "\n", x), expand = c(0, 0)) +
+        ggplot2::labs(x = NULL, y = NULL, title = ttl) +
+        ggplot2::theme(axis.text.x = ggplot2::element_text(face = "bold", color = "black"), strip.text.y = ggplot2::element_text(angle = 0, face = "bold"),
+                       panel.spacing = ggplot2::unit(.3, "lines"))
+      if (row_facet) p <- p + ggplot2::facet_grid(cluster ~ ., scales = "free_y", space = "free_y")
+    } else {
+      p <- ggplot2::ggplot(tab, ggplot2::aes(sample, gene_name, fill = value)) +
+        ggplot2::geom_tile(color = border, linewidth = .1) + fill + th +
+        ggplot2::facet_grid(if (row_facet) cluster ~ group else . ~ group, scales = "free", space = "free", labeller = ggplot2::label_wrap_gen(15)) +
+        ggplot2::labs(x = NULL, y = NULL, title = ttl) +
+        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+                       strip.text = ggplot2::element_text(face = "bold"), strip.text.y = ggplot2::element_text(angle = 0),
+                       panel.spacing = ggplot2::unit(.3, "lines"))
+    }
   } else {
     tab[, column := as.integer(as.character(column))]
     p <- ggplot2::ggplot(tab, ggplot2::aes(column, gene_name, fill = value)) +
-      ggplot2::geom_tile() + fill + th +
+      ggplot2::geom_tile(color = border, linewidth = .1) + fill + th +
       ggplot2::scale_x_continuous(expand = c(0, 0)) +
       ggplot2::labs(x = paste0(order_by, " (bins of ", round(nrow(key) / n_bins), " cells)"), y = NULL) +
       ggplot2::theme(axis.text.x = ggplot2::element_blank(), strip.text.y = ggplot2::element_text(angle = 0, face = "bold"),

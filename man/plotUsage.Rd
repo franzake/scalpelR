@@ -11,6 +11,7 @@ plotUsage(
   sample_by = NULL,
   groups = NULL,
   isoform_annotation = NULL,
+  min_usage = 0.05,
   assay = "RNA"
 )
 }
@@ -21,7 +22,7 @@ plotUsage(
 
 \item{group_by}{Metadata column with the groups of cells.}
 
-\item{sample_by}{Optional metadata column with the sample of each cell: one panel per sample.}
+\item{sample_by}{Optional metadata column with the sample of each cell: usage in each sample shown as points.}
 
 \item{groups}{Optional subset / order of the groups.}
 
@@ -29,10 +30,13 @@ plotUsage(
 \code{*.annots.gz} files) or GTF \code{GRanges}: isoforms ordered from the most proximal to the most
 distal 3' end.}
 
+\item{min_usage}{Isoforms with a usage below this value in all the groups are merged in \code{"other"}. Default 0.05.}
+
 \item{assay}{Seurat assay. Default \code{"RNA"}.}
 }
 \value{
-A ggplot object (stacked bars: usage of each isoform per group, number of gene UMIs on top).
+A ggplot object: one bar per isoform and group (usage of all the cells of the group), points: usage in
+  each sample, number of gene UMIs of each group in the legend.
 }
 \description{
 Plots the usage of the isoforms of a gene (fraction of the gene counts) in each group of cells, as
