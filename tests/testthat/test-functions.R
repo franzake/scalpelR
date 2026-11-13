@@ -65,7 +65,7 @@ test_that("weightedUTR_cell: sum over isoforms of usage x 3' UTR length, sparse,
   gr <- GenomicRanges::GRanges("chr1",
     IRanges::IRanges(c(100, 201, 100, 201, 5000, 5101, 9000, 9101), c(200, 300, 200, 1300, 5100, 5300, 9100, 9200)), strand = "+",
     type = rep(c("CDS", "UTR"), 4), gene_name = rep(c("Ga", "Gb"), each = 4), transcript_name = rep(c("Ga-201", "Ga-202", "Gb-201", "Gb-202"), each = 2))
-  w <- weightedUTR_cell(obj, gr, group.by = "celltype", min.counts = 0)
+  w <- weightedUTR_cell(obj, gr, group.by = "celltype", method = "length", min.counts = 0)
   m <- as.matrix(SeuratObject::LayerData(SeuratObject::JoinLayers(obj), layer = "counts"))
   len <- c(100, 1100, 200, 100)
   ga <- (m[1, ] * len[1] + m[2, ] * len[2]) / (m[1, ] + m[2, ])
@@ -73,6 +73,21 @@ test_that("weightedUTR_cell: sum over isoforms of usage x 3' UTR length, sparse,
   expected <- rowMeans(cbind(ga, gb), na.rm = TRUE)
   expect_equal(unname(w$wUTRlength.cell), unname(expected))
   expect_identical(w$cells, colnames(obj))
+})
+
+test_that("weightedUTR_cell centered: mean over genes of (cell - all cells) weighted 3' UTR length", {
+  obj <- sim_obj()
+  gr <- GenomicRanges::GRanges("chr1",
+    IRanges::IRanges(c(100, 201, 100, 201, 5000, 5101, 9000, 9101), c(200, 300, 200, 1300, 5100, 5300, 9100, 9200)), strand = "+",
+    type = rep(c("CDS", "UTR"), 4), gene_name = rep(c("Ga", "Gb"), each = 4), transcript_name = rep(c("Ga-201", "Ga-202", "Gb-201", "Gb-202"), each = 2))
+  w <- weightedUTR_cell(obj, gr, group.by = "celltype")
+  m <- as.matrix(SeuratObject::LayerData(SeuratObject::JoinLayers(obj), layer = "counts"))
+  len <- c(100, 1100, 200, 100)
+  ga <- (m[1, ] * len[1] + m[2, ] * len[2]) / (m[1, ] + m[2, ]) - sum(m[1, ] * len[1] + m[2, ] * len[2]) / sum(m[1:2, ])
+  gb <- (m[3, ] * len[3] + m[4, ] * len[4]) / (m[3, ] + m[4, ]) - sum(m[3, ] * len[3] + m[4, ] * len[4]) / sum(m[3:4, ])
+  expect_equal(unname(w$wUTRlength.cell), unname(rowMeans(cbind(ga, gb), na.rm = TRUE)))
+  #- cell type A uses the short Ga isoform more: shorter than average...
+  expect_true(median(w[group == "A"]$wUTRlength.cell) < 0 && median(w[group == "B"]$wUTRlength.cell) > 0)
 })
 
 test_that("plotExpression on a Seurat object with layers", {
