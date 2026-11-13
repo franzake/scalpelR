@@ -42,6 +42,10 @@ test_that("FindIsoforms on a Seurat object with layers = pipeline engine", {
   expect_true(all(is.na(res[gene_name == "Gb"]$direction)))
   #- 2 samples: replication evaluated for every tested gene (no NA)...
   expect_false(anyNA(res[!is.na(p.value)]$replicated))
+  #- groups confounded with samples (one group per sample): replication not applicable (NA)...
+  obj$cond <- obj$orig.ident
+  conf <- FindIsoforms(obj, group_by = "cond", sample_by = "orig.ident", isoform_annotation = f, extended = TRUE)
+  expect_true(all(is.na(conf[!is.na(p.value)]$replicated)))
   #- default: genes with a differential isoform usage only (Ga)...
   expect_identical(unique(FindIsoforms(obj, group_by = "celltype", isoform_annotation = f)$gene_name), "Ga")
 })
