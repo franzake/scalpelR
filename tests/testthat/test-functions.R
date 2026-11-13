@@ -101,9 +101,11 @@ test_that("CoveragePlot: reads of each group from the BAM files, per 1000 cells,
     "r3\t0\tchr1\t1021\t255\t20M10D30M\t*\t0\t0\t*\t*\tCB:Z:C60-1")
   writeLines(sam, file.path(dir, "s1.sam"))
   expect_equal(system(paste("samtools view -b -o", file.path(dir, "s1.bam"), file.path(dir, "s1.sam"), "&& samtools index", file.path(dir, "s1.bam"))), 0)
-  gr <- GenomicRanges::GRanges("chr1", IRanges::IRanges(c(900, 1000), c(2100, 1100)), strand = "+", type = c("exon", "CDS"),
-    gene_name = "Ga", transcript_name = "Ga-201")
-  p <- CoveragePlot(obj, bamfiles = c(S1 = file.path(dir, "s1.bam")), gene_in = "Ga", genome_gr = gr, group_by = "celltype", features = "Ga-201")
+  #- Ga-201 coding, Ga-202 non-coding (no CDS)...
+  gr <- GenomicRanges::GRanges("chr1", IRanges::IRanges(c(900, 1000, 900), c(2100, 1100, 1500)), strand = "+", type = c("exon", "CDS", "exon"),
+    gene_name = "Ga", transcript_name = c("Ga-201", "Ga-201", "Ga-202"))
+  p <- CoveragePlot(obj, bamfiles = c(S1 = file.path(dir, "s1.bam")), gene_in = "Ga", genome_gr = gr, group_by = "celltype", features = c("Ga-201", "Ga-202"))
+  expect_setequal(levels(data.table::as.data.table(p[[2]]$layers[[3]]$data)$transcript_name), c("Ga-201", "Ga-202"))
   d <- data.table::as.data.table(p[[1]]$data)
   n <- table(obj$celltype)
   expect_equal(d[grepl("^A", group) & position == 1010]$depth, 2 / n[["A"]] * 1000)

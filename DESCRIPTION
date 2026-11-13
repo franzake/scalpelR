@@ -25,6 +25,7 @@ Imports:
     ggplot2,
     stats,
     GenomicRanges,
+    IRanges,
     patchwork
 License: GPL-3
 Encoding: UTF-8

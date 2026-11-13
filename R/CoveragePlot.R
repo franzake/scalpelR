@@ -24,6 +24,7 @@
 #' @param extend Number of nt plotted beyond the 3' end of the gene (reads downstream of the annotation).
 #'   Default 1000.
 #' @param samtools.bin Path to \code{samtools}. Default \code{"samtools"}.
+#' @param colors Optional colors of the groups (named by group).
 #'
 #' @return A \code{patchwork} / \code{ggplot} object: coverage per group (reads per 1000 cells) above the
 #'   isoform structures (thick: CDS, thin: UTR).
@@ -51,7 +52,8 @@ CoveragePlot <- function(
     stranded = TRUE,
     distZOOM = NULL,
     extend = 1000,
-    samtools.bin = "samtools") {
+    samtools.bin = "samtools",
+    colors = NULL) {
   # checks
   meta <- seurat_obj[[]]
   for (col in c(group_by, sample_by, barcode_col)) {
@@ -132,35 +134,80 @@ CoveragePlot <- function(
     n <- n_cells[group == g]$N
     data.table::data.table(group = g, position = positions, depth = cumsum(d)[seq_along(positions)] / max(n, 1) * 1000)
   }))
-  depth[, group := factor(paste0(group, " (", n_cells$N[match(group, n_cells$group)], " cells)"),
-    levels = paste0(lv, " (", n_cells$N[match(lv, n_cells$group)], " cells)"))]
+  depth[, label := paste0(group, " (", n_cells$N[match(group, n_cells$group)], " cells)")]
+  depth[, label := factor(label, levels = unique(label[order(match(group, lv))]))]
 
-  #- coverage tracks...
-  p_cov <- ggplot2::ggplot(depth, ggplot2::aes(position, depth)) +
-    ggplot2::geom_area(fill = "#38B6A3", color = "#1f6f63", linewidth = .2) +
-    ggplot2::facet_wrap(~group, ncol = 1, strip.position = "top") +
+  #- group colors & isoform structures (exons split in CDS / UTR)...
+  if (is.null(colors)) colors <- stats::setNames(grDevices::hcl.colors(max(3, length(lv)), "Dark 3")[seq_along(lv)], lv)
+  parts <- .isoform_parts(gtab)
+  #- isoforms with a part in the plotted region only...
+  parts <- parts[end >= from & start <= to]
+  parts[, transcript_name := droplevels(transcript_name)]
+  tr <- unique(parts$transcript_name)
+  args <- list(depth = depth, parts = parts, lv = lv, colors = colors, chr = chr, str = str, from = from, to = to, gene_in = gene_in)
+  return(do.call(.coverage_ggplot, args))
+}
+
+# Exons of each transcript split in CDS / UTR parts (feature: "CDS" / "UTR"), transcripts ordered by their 3' end
+.isoform_parts <- function(gtab) {
+  parts <- data.table::rbindlist(lapply(split(gtab, gtab$transcript_name), function(x) {
+    #- non-coding transcripts: no CDS (all exons drawn as UTR)...
+    gr <- function(y) GenomicRanges::reduce(GenomicRanges::GRanges(rep(x$seqnames[1], nrow(y)), IRanges::IRanges(y$start, y$end)))
+    ex <- gr(x[type == "exon"])
+    cds <- gr(x[type == "CDS"])
+    utr <- GenomicRanges::setdiff(ex, cds)
+    out <- rbind(
+      data.table::data.table(start = GenomicRanges::start(cds), end = GenomicRanges::end(cds), feature = rep("CDS", length(cds))),
+      data.table::data.table(start = GenomicRanges::start(utr), end = GenomicRanges::end(utr), feature = rep("UTR", length(utr))))
+    out[, `:=`(transcript_name = x$transcript_name[1], strand = x$strand[1], seqnames = x$seqnames[1])]
+    out
+  }))
+  ends <- parts[, .(three_end = if (strand[1] == "+") max(end) else -min(start)), by = transcript_name]
+  parts[, transcript_name := factor(transcript_name, levels = ends[order(three_end)]$transcript_name)]
+  return(parts[order(transcript_name, start)])
+}
+
+# ggplot2 rendering: one coverage panel per group above the isoform structures
+.coverage_ggplot <- function(depth, parts, lv, colors, chr, str, from, to, gene_in) {
+  ymax <- max(depth$depth, 1e-9)
+  lab <- unique(depth[, .(label, group)])
+  kb <- function(x) paste0(format(x / 1e6, nsmall = 3), " Mb")
+  p_cov <- ggplot2::ggplot(depth, ggplot2::aes(position, depth, fill = group, color = group)) +
+    ggplot2::geom_area(linewidth = .25, alpha = .85) +
+    ggplot2::facet_wrap(~label, ncol = 1, strip.position = "top") +
+    ggplot2::scale_fill_manual(values = colors) +
+    ggplot2::scale_color_manual(values = colors) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, .05)), n.breaks = 3) +
     ggplot2::coord_cartesian(xlim = c(from, to), expand = FALSE) +
-    ggplot2::ylab("reads per 1000 cells") +
-    ggplot2::xlab(NULL) +
-    ggplot2::ggtitle(paste0(gene_in, " (", chr, ":", from, "-", to, ", ", str, " strand)")) +
-    ggplot2::theme_bw(base_size = 12) +
-    ggplot2::theme(strip.text = ggplot2::element_text(hjust = 0, size = 10), strip.background = ggplot2::element_blank(),
-                   axis.text.x = ggplot2::element_blank(), axis.ticks.x = ggplot2::element_blank(), panel.grid.minor = ggplot2::element_blank())
+    ggplot2::labs(x = NULL, y = "reads per 1000 cells",
+                  title = gene_in, subtitle = paste0(chr, ":", format(from, big.mark = ","), "-", format(to, big.mark = ","), " (", str, " strand)")) +
+    ggplot2::theme_classic(base_size = 12) +
+    ggplot2::theme(legend.position = "none", strip.text = ggplot2::element_text(hjust = 0, face = "bold", size = 10),
+                   strip.background = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_blank(), axis.ticks.x = ggplot2::element_blank(), axis.line.x = ggplot2::element_blank(),
+                   panel.spacing = ggplot2::unit(.15, "lines"), plot.title = ggplot2::element_text(face = "bold.italic"),
+                   panel.grid.major.y = ggplot2::element_line(color = "gray92", linewidth = .3))
 
-  #- isoform structures (thick: CDS, thin: exon / UTR)...
-  tr <- sort(unique(gtab$transcript_name), decreasing = TRUE)
-  gtab[, y := match(transcript_name, tr)]
-  span <- gtab[type == "exon", .(start = min(start), end = max(end)), by = .(transcript_name, y)]
+  #- isoforms: intron line with strand arrows, UTR (thin) and CDS (thick) boxes, name at the 3' end...
+  parts[, y := as.integer(transcript_name)]
+  span <- parts[, .(start = max(min(start), from), end = min(max(end), to)), by = .(transcript_name, y)]
+  arr <- span[, .(x = seq(start, end, length.out = max(2, round((end - start) / (to - from) * 25)))), by = .(transcript_name, y)]
+  arr[, xend := x + ifelse(str == "+", 1, -1) * (to - from) * .004]
   p_gene <- ggplot2::ggplot() +
-    ggplot2::geom_segment(data = span, ggplot2::aes(x = pmax(start, from), xend = pmin(end, to), y = y, yend = y), linewidth = .4) +
-    ggplot2::geom_rect(data = gtab[type == "exon"], ggplot2::aes(xmin = pmax(start, from), xmax = pmin(end, to), ymin = y - .15, ymax = y + .15), fill = "gray40") +
-    ggplot2::geom_rect(data = gtab[type == "CDS"], ggplot2::aes(xmin = pmax(start, from), xmax = pmin(end, to), ymin = y - .3, ymax = y + .3), fill = "gray20") +
-    ggplot2::scale_y_continuous(breaks = seq_along(tr), labels = tr) +
+    ggplot2::geom_segment(data = span, ggplot2::aes(x = start, xend = end, y = y, yend = y), linewidth = .4, color = "gray35") +
+    ggplot2::geom_segment(data = arr, ggplot2::aes(x = x, xend = xend, y = y, yend = y), color = "gray35", linewidth = .3,
+                          arrow = ggplot2::arrow(length = ggplot2::unit(.07, "inches"), type = "open")) +
+    ggplot2::geom_rect(data = parts[feature == "UTR"], ggplot2::aes(xmin = pmax(start, from), xmax = pmin(end, to), ymin = y - .17, ymax = y + .17),
+                       fill = "#8FA8C8", color = "#3C5488", linewidth = .2) +
+    ggplot2::geom_rect(data = parts[feature == "CDS"], ggplot2::aes(xmin = pmax(start, from), xmax = pmin(end, to), ymin = y - .32, ymax = y + .32),
+                       fill = "#3C5488", color = "#3C5488", linewidth = .2) +
+    ggplot2::scale_y_continuous(breaks = seq_along(levels(parts$transcript_name)), labels = levels(parts$transcript_name),
+                                expand = ggplot2::expansion(add = .6)) +
+    ggplot2::scale_x_continuous(labels = kb, n.breaks = 6) +
     ggplot2::coord_cartesian(xlim = c(from, to), expand = FALSE) +
-    ggplot2::xlab(paste0(chr, " (nt)")) +
-    ggplot2::ylab(NULL) +
-    ggplot2::theme_bw(base_size = 12) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank())
-
-  return(patchwork::wrap_plots(p_cov, p_gene, ncol = 1, heights = c(length(lv), max(1, length(tr) * .35))))
+    ggplot2::labs(x = chr, y = NULL) +
+    ggplot2::theme_classic(base_size = 12) +
+    ggplot2::theme(axis.line.y = ggplot2::element_blank(), axis.ticks.y = ggplot2::element_blank(),
+                   axis.text.y = ggplot2::element_text(face = "italic", color = "black"))
+  return(patchwork::wrap_plots(p_cov, p_gene, ncol = 1, heights = c(length(lv) * 1.1, max(.8, nlevels(parts$transcript_name) * .35))))
 }
