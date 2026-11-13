@@ -40,6 +40,8 @@ test_that("FindIsoforms on a Seurat object with layers = pipeline engine", {
   ga <- res[gene_name == "Ga"]
   expect_true(all(ga$event_type == "tandem_3UTR") && all(ga$direction == "shortening") && isTRUE(ga$replicated[1]))
   expect_true(all(is.na(res[gene_name == "Gb"]$direction)))
+  #- 2 samples: replication evaluated for every tested gene (no NA)...
+  expect_false(anyNA(res[!is.na(p.value)]$replicated))
   #- default: genes with a differential isoform usage only (Ga)...
   expect_identical(unique(FindIsoforms(obj, group_by = "celltype", isoform_annotation = f)$gene_name), "Ga")
 })
