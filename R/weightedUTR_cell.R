@@ -39,18 +39,7 @@ weightedUTR_cell <- function(
 
     message("Processing annotation file...(1/3)")
     #- 3' UTR length of each transcript: UTR segments downstream of the CDS end...
-    my_annot <- annotation_gr[annotation_gr$type == "CDS" | annotation_gr$type == "UTR"][, c("type", "gene_name", "transcript_name")] %>%
-        data.frame() %>%
-        dplyr::distinct(seqnames, start, end, strand, type, width, gene_name, transcript_name) %>%
-        dplyr::group_by(transcript_name) %>%
-        dplyr::filter(any(type == "CDS")) %>%
-        dplyr::mutate(end_CDS = dplyr::if_else(strand == "-", min(start[which(type == "CDS")]), max(end[which(type == "CDS")]))) %>%
-        dplyr::filter((strand == "-" & end < end_CDS) | (strand == "+" & start > end_CDS)) %>%
-        dplyr::mutate(UTRlength = sum(width)) %>%
-        dplyr::ungroup() %>%
-        dplyr::distinct(gene_name, transcript_name, UTRlength) %>%
-        dplyr::mutate(gene_name = gsub("_", "-", gene_name), transcript_name = gsub("_", "-", transcript_name)) %>%
-        data.table::data.table()
+    my_annot <- .utr3_length(annotation_gr)
 
     message("Processing isoform expression...(2/3)")
     #- isoform counts (sparse, layers joined) of the annotated isoforms...

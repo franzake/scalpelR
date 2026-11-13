@@ -20,6 +20,7 @@ devtools::install_github("Franzx7/scalpelR@dev")
 | ------------------ | -------------------------------------------------------------------------------------------------------- |
 | `FindIsoforms`     | Differential isoform usage between groups of cells (`chisq` or `permutation` test), same method and table as the nf-core/scalpel `DIU_table.csv`: event type (tandem 3' UTR / alternative terminal exon), 3' UTR direction, isoform usage per group, replication across samples. |
 | `plotUsage`        | Isoform usage (fraction of the gene UMIs) per group of cells and sample.                                  |
+| `plotShiftHeatmap` | Heatmap of the 3' UTR shifts of the genes between groups of cells (and samples) or along a pseudotime.   |
 | `CoveragePlot`     | Read coverage of a gene per group of cells from the SCALPEL filtered BAM files (normalized by the number of cells), with the isoform structures. |
 | `weightedUTR_cell` | Weighted 3' UTR length per cell (isoform usage x isoform 3' UTR length).                                  |
 | `subsetBAM`        | BAM file of the reads of selected cells.                                                                 |

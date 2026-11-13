@@ -1,7 +1,7 @@
 Package: scalpelR
 Type: Package
 Title: Downstream Statistical Applications for SCALPEL Nextflow Execution
-Version: 0.2.0
+Version: 0.3.0
 Author: Franz AKE (PLASS lab)
 Maintainer: Franz AKE <fake@idibell.cat>
 Description: Provides downstream statistical analyses for SCALPEL, 
@@ -26,7 +26,8 @@ Imports:
     stats,
     GenomicRanges,
     IRanges,
-    patchwork
+    patchwork,
+    scales
 License: GPL-3
 Encoding: UTF-8
 LazyData: true

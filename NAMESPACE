@@ -1,6 +1,7 @@
 export(CoveragePlot)
 export(FindIsoforms)
 export(plotExpression)
+export(plotShiftHeatmap)
 export(plotUsage)
 export(subsetBAM)
 export(weightedUTR_cell)

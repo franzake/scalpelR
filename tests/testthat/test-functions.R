@@ -113,3 +113,36 @@ test_that("CoveragePlot: reads of each group from the BAM files, per 1000 cells,
   expect_equal(d[grepl("^A", group) & position == 1060]$depth, 0)
   expect_equal(d[grepl("^B", group) & position == 1045]$depth, 1 / n[["B"]] * 1000)
 })
+
+test_that("plotShiftHeatmap: relative 3' UTR length per group & sample, and along a trajectory", {
+  obj <- sim_obj()
+  gr <- GenomicRanges::GRanges("chr1",
+    IRanges::IRanges(c(100, 201, 100, 201, 5000, 5101, 9000, 9101), c(200, 300, 200, 1300, 5100, 5300, 9100, 9200)), strand = "+",
+    type = rep(c("CDS", "UTR"), 4), gene_name = rep(c("Ga", "Gb"), each = 4), transcript_name = rep(c("Ga-201", "Ga-202", "Gb-201", "Gb-202"), each = 2))
+  p <- plotShiftHeatmap(obj, gr, group_by = "celltype", sample_by = "orig.ident", scale = FALSE)
+  d <- attr(p, "shift")
+  expect_equal(nrow(d), 2 * 4)
+  #- Ga: relative 3' UTR length = (weighted length - 100) / (1100 - 100), shorter in A...
+  m <- as.matrix(SeuratObject::LayerData(SeuratObject::JoinLayers(obj), layer = "counts"))
+  a <- obj$celltype == "A" & obj$orig.ident == "S1"
+  rel <- (sum(m[1, a]) * 100 + sum(m[2, a]) * 1100) / sum(m[1:2, a])
+  expect_equal(d[gene_name == "Ga" & group == "A" & sample == "S1"]$rel_3UTR, (rel - 100) / 1000)
+  expect_true(all(d[gene_name == "Ga" & group == "A"]$value < 0) && all(d[gene_name == "Ga" & group == "B"]$value > 0))
+  expect_true(all(abs(d[, sum(value), by = gene_name]$V1) < 1e-9))
+  #- trajectory: A cells first, Ga 3' UTR lengthening along the bins...
+  obj$pt <- ifelse(obj$celltype == "A", 0, 1) + stats::runif(ncol(obj))
+  p2 <- plotShiftHeatmap(obj, gr, group_by = "celltype", order_by = "pt", n_bins = 4, min_umis = 1)
+  d2 <- attr(p2, "shift")[gene_name == "Ga"][order(column)]
+  expect_s3_class(p2, "patchwork")
+  expect_true(d2$value[1] < 0 && d2$value[4] > 0)
+})
+
+test_that("plotShiftHeatmap: clusters of genes", {
+  obj <- sim_obj()
+  gr <- GenomicRanges::GRanges("chr1",
+    IRanges::IRanges(c(100, 201, 100, 201, 5000, 5101, 9000, 9101), c(200, 300, 200, 1300, 5100, 5300, 9100, 9200)), strand = "+",
+    type = rep(c("CDS", "UTR"), 4), gene_name = rep(c("Ga", "Gb"), each = 4), transcript_name = rep(c("Ga-201", "Ga-202", "Gb-201", "Gb-202"), each = 2))
+  d <- attr(plotShiftHeatmap(obj, gr, group_by = "celltype", n_clusters = 2), "shift")
+  expect_identical(nlevels(d$cluster), 2L)
+  expect_identical(data.table::uniqueN(d[, .(gene_name, cluster)]), 2L)
+})
