@@ -7,6 +7,8 @@
 #' @param group_var The metadata column in the Seurat object to group cells by.
 #' @param plot Character. Whether to plot by group (\code{"group"}) or by features (\code{"features"}). Default is \code{"group"}.
 #' @param assay Character. The Seurat assay to use. Default is \code{"RNA"}.
+#' @param layer Character. The layer to use (layers split per sample are joined). Default is \code{"counts"}.
+#' @param only_expressed_cells Logical. Plot only the cells expressing the feature. Default is \code{FALSE}.
 #' @param log_normalization Logical. Whether to log-normalize the expression values (\code{TRUE}) or plot raw counts (\code{FALSE}). Default is \code{TRUE}.
 #'
 #' @details
@@ -46,10 +48,11 @@ plotExpression <- function(
   # extract meta.data
   meta.infos <- data.table::data.table(group = seurat_obj@meta.data[, group_var], cells = colnames(seurat_obj))
 
-  # compute counts tab
-  tab <- seurat_obj[[assay]][layer][features, ] %>%
-    as_tibble(rownames = "features") %>%
-    reshape2::melt(variable.name = "cells") %>%
+  # compute counts tab (layers joined, e.g. one counts layer per sample)
+  counts <- SeuratObject::LayerData(SeuratObject::JoinLayers(seurat_obj, assay = assay), assay = assay, layer = layer)
+  tab <- as.matrix(counts[features, , drop = FALSE]) %>%
+    reshape2::melt(varnames = c("features", "cells")) %>%
+    dplyr::mutate(features = as.character(features), cells = as.character(cells)) %>%
     dplyr::left_join(meta.infos, by = "cells") %>%
     dplyr::mutate(value.logNorm = log1p(value)) %>%
     dplyr::ungroup()

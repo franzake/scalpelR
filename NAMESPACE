@@ -1,8 +1,10 @@
-exportPattern("^[[:alpha:]]+")
 export(CoveragePlot)
 export(FindIsoforms)
 export(plotExpression)
+export(plotUsage)
 export(subsetBAM)
 export(weightedUTR_cell)
 
+import(data.table)
+import(Matrix)
 importFrom(magrittr, "%>%")

@@ -10,7 +10,13 @@
 #' @param assay The assay to use for expression values, default is "RNA".
 #' @param min.counts The minimum number of counts required to consider a transcript for further analysis. Default is 3.
 #'
-#' @return A data.table object containing the weighted UTR length for each cell, along with cluster annotations.
+#' @return A data.table with one row per cell: \code{cells}, \code{group}, \code{wUTRlength.cell} (mean over the genes
+#'   expressed in the cell of the gene weighted 3' UTR length) and \code{n_genes} (genes used).
+#'
+#' @details
+#' For each gene and cell, the weighted 3' UTR length is the sum over its isoforms of the isoform fraction
+#' of the gene counts x the isoform 3' UTR length (isoforms with more than \code{min.counts} counts in the
+#' cell). Counts split in several layers (one per sample) are joined; computed on sparse matrices.
 #'
 #' @examples
 #' \dontrun{
@@ -28,46 +34,53 @@ weightedUTR_cell <- function(
         assay = "RNA",
         min.counts = 3) {
     # Checks
-    if (!is.null(features)) {seurat_obj <- subset(seurat_obj, features = features)}
     if (is.null(group.by)) stop("Error! Provide group.by argument.")
     if (!(group.by %in% colnames(seurat_obj[[]]))) stop(paste0("Error! ", group.by, " not found in Seurat object."))
 
     message("Processing annotation file...(1/3)")
-    # a. Subset isoforms from annotation
-    my_annot <- annotation_gr[annotation_gr$type=="CDS" | annotation_gr$type=="UTR"][,c("type","gene_name","transcript_name")] %>%
+    #- 3' UTR length of each transcript: UTR segments downstream of the CDS end...
+    my_annot <- annotation_gr[annotation_gr$type == "CDS" | annotation_gr$type == "UTR"][, c("type", "gene_name", "transcript_name")] %>%
         data.frame() %>%
         dplyr::distinct(seqnames, start, end, strand, type, width, gene_name, transcript_name) %>%
         dplyr::group_by(transcript_name) %>%
+        dplyr::filter(any(type == "CDS")) %>%
         dplyr::mutate(end_CDS = dplyr::if_else(strand == "-", min(start[which(type == "CDS")]), max(end[which(type == "CDS")]))) %>%
         dplyr::filter((strand == "-" & end < end_CDS) | (strand == "+" & start > end_CDS)) %>%
         dplyr::mutate(UTRlength = sum(width)) %>%
+        dplyr::ungroup() %>%
         dplyr::distinct(gene_name, transcript_name, UTRlength) %>%
+        dplyr::mutate(gene_name = gsub("_", "-", gene_name), transcript_name = gsub("_", "-", transcript_name)) %>%
         data.table::data.table()
 
     message("Processing isoform expression...(2/3)")
-    # Extract isoform expression from Seurat object
-    my_expr <- tibble::as_tibble(data.frame(seurat_obj[[assay]]$counts), rownames = "gene_tr") %>%
-        tidyr::separate(col = gene_tr, into = c("gene_name", "transcript_name"), sep = "\\*\\*\\*", remove = FALSE) %>%
-        reshape2::melt(id.vars = c('gene_tr', 'gene_name', 'transcript_name')) %>% suppressWarnings() %>%
-        dplyr::filter(value > min.counts & transcript_name %in% my_annot$transcript_name) %>%
-        dplyr::mutate(variable = stringr::str_replace(variable, "\\.", "\\-")) %>%
-        data.table::data.table() %>%
-        dplyr::left_join(my_annot, by = c('gene_name', 'transcript_name')) %>%
-        dplyr::group_by(variable, gene_name) %>%
-        dplyr::mutate(value.norm = value / sum(value),
-                      wUTRlength.isof = value.norm * UTRlength,
-                      wUTRlength.gene = mean(wUTRlength.isof)) %>%
-        data.table::data.table() %>%
-        dplyr::distinct(gene_tr, gene_name, transcript_name, variable,
-                        value, UTRlength, wUTRlength.gene)
+    #- isoform counts (sparse, layers joined) of the annotated isoforms...
+    seurat_obj <- SeuratObject::JoinLayers(seurat_obj, assay = assay)
+    counts <- SeuratObject::LayerData(seurat_obj, assay = assay, layer = "counts")
+    feats <- data.table::data.table(gene_tr = rownames(counts))
+    feats[, c("gene_name", "transcript_name") := data.table::tstrsplit(gene_tr, "***", fixed = TRUE)]
+    feats <- merge(feats, my_annot, by = c("gene_name", "transcript_name"), sort = FALSE)
+    if (!is.null(features)) feats <- feats[gene_tr %in% features | gene_name %in% features]
+    if (nrow(feats) == 0) stop("No isoform of the Seurat object found in the annotation (UTR / CDS).")
+    x <- counts[feats$gene_tr, , drop = FALSE]
+    x@x[x@x <= min.counts] <- 0
+    x <- Matrix::drop0(x)
+
+    #- gene weighted 3' UTR length per cell = sum(isoform fraction x isoform 3' UTR length)...
+    genes <- factor(feats$gene_name)
+    A <- Matrix::sparseMatrix(i = as.integer(genes), j = seq_along(genes), x = 1, dims = c(nlevels(genes), length(genes)))
+    tot <- A %*% x
+    wlen <- A %*% (x * feats$UTRlength)
+    expressed <- tot > 0
+    tot_inv <- tot
+    tot_inv@x <- 1 / tot_inv@x
+    wgene <- wlen * tot_inv
 
     message("Integrating Seurat metadata...(3/3)")
-    my_expr = tibble::tibble(group=seurat_obj[[]][,group.by], variable=stringr::str_replace(colnames(seurat_obj),"\\.","\\-")) %>%
-        dplyr::left_join(my_expr, by="variable") %>%
-        dplyr::group_by(variable) %>%
-        dplyr::mutate(wUTRlength.cell = mean(wUTRlength.gene)) %>%
-        dplyr::distinct(variable, group, wUTRlength.cell) %>%
-        dplyr::rename(cells=variable) %>%
-        data.table::data.table()
+    n_genes <- Matrix::colSums(expressed)
+    my_expr <- data.table::data.table(
+        cells = colnames(seurat_obj),
+        group = seurat_obj[[]][, group.by],
+        wUTRlength.cell = ifelse(n_genes > 0, Matrix::colSums(wgene) / n_genes, NA_real_),
+        n_genes = n_genes)
     return(my_expr)
 }
