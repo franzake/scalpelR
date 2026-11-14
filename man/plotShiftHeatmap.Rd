@@ -18,7 +18,7 @@ plotShiftHeatmap(
   scale = TRUE,
   n_clusters = NULL,
   border = "black",
-  show_genes = NULL,
+  show_genes = TRUE,
   assay = "RNA"
 )
 }
@@ -57,7 +57,7 @@ blocks (e.g. early / late shortening, lengthening), cluster of each gene in \cod
 
 \item{border}{Color of the tile borders (\code{NA}: none). Default \code{"black"}.}
 
-\item{show_genes}{Show the gene names (default: if 60 genes or less).}
+\item{show_genes}{Show the gene names. Default \code{TRUE} (font size adapted to the number of genes).}
 
 \item{assay}{Seurat assay. Default \code{"RNA"}.}
 }

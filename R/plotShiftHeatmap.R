@@ -25,7 +25,7 @@
 #' @param n_clusters Optional number of clusters of genes (hierarchical clustering of the values): genes split in
 #'   blocks (e.g. early / late shortening, lengthening), cluster of each gene in \code{attr(p, "shift")}.
 #' @param border Color of the tile borders (\code{NA}: none). Default \code{"black"}.
-#' @param show_genes Show the gene names (default: if 60 genes or less).
+#' @param show_genes Show the gene names. Default \code{TRUE} (font size adapted to the number of genes).
 #' @param assay Seurat assay. Default \code{"RNA"}.
 #'
 #' @details
@@ -58,7 +58,7 @@ plotShiftHeatmap <- function(
     scale = TRUE,
     n_clusters = NULL,
     border = "black",
-    show_genes = NULL,
+    show_genes = TRUE,
     assay = "RNA") {
   meta <- seurat_obj[[]]
   if (is.null(group_by) & is.null(order_by)) stop("Error: provide group_by and / or order_by !")
@@ -148,12 +148,13 @@ plotShiftHeatmap <- function(
   ncl <- tab[, .(n = data.table::uniqueN(gene_name)), by = cluster]
   tab[, cluster := factor(cluster, levels = sort(ncl$cluster), labels = paste0(sort(ncl$cluster), " (", ncl$n[order(ncl$cluster)], ")"))]
   row_facet <- !is.null(n_clusters) && nlevels(tab$cluster) > 1
-  if (is.null(show_genes)) show_genes <- length(lv_genes) <= 60
+  #- gene names: smaller font with many genes...
+  gene_size <- if (length(lv_genes) <= 40) 9 else if (length(lv_genes) <= 80) 7.5 else 6.5
   fill <- ggplot2::scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0, limits = c(-lim, lim),
                                         oob = scales::squish, na.value = "gray85",
                                         name = paste0("relative\n3' UTR length\n", if (scale) "(z-score)" else "(centered)"))
   th <- ggplot2::theme_minimal(base_size = 12) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.y = if (show_genes) ggplot2::element_text(face = "italic", size = 8) else ggplot2::element_blank(),
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.y = if (show_genes) ggplot2::element_text(face = "italic", size = gene_size, color = "black") else ggplot2::element_blank(),
                    plot.title = ggplot2::element_text(face = "bold"))
   ttl <- paste0("3' UTR shifts (", length(lv_genes), " genes)")
 
